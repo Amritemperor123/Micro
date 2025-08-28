@@ -10,9 +10,8 @@ import { BirthCertificateForm as BirthCertificateFormType } from "@/types/birth-
 import { AadhaarConsentDialog } from "./AadhaarConsentDialog";
 
 export const BirthCertificateForm = () => {
-  const [step, setStep] = useState<'form' | 'submitted' | 'preview'>('form');
+
   const [showConsentDialog, setShowConsentDialog] = useState(false);
-  const [certificateId, setCertificateId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
@@ -54,7 +53,6 @@ export const BirthCertificateForm = () => {
     setIsSubmitting(true);
     try {
       // Build multipart form data for backend
-      const formData = new FormData();
       const payload = {
         firstName: data.firstName,
         middleName: data.middleName || undefined,
@@ -71,23 +69,29 @@ export const BirthCertificateForm = () => {
         registrationNumber: data.registrationNumber || undefined,
         aadhaarConsentGiven: data.aadhaarConsentGiven,
       };
-      formData.append("data", new Blob([JSON.stringify(payload)], { type: "application/json" }));
-      if (data.fatherAadhaarFile) formData.append("fatherAadhaarFile", data.fatherAadhaarFile);
-      if (data.motherAadhaarFile) formData.append("motherAadhaarFile", data.motherAadhaarFile);
 
-      const res = await fetch("http://localhost:8080/api/v1/birth-certificates", {
+      const res = await fetch("http://localhost:3001/submit-form", {
         method: "POST",
-        body: formData,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ formData: payload }),
       });
+      
       if (!res.ok) throw new Error("Failed to submit application");
-      const certificate = await res.json();
-
-      setCertificateId(certificate.id);
-      setStep('submitted');
+      
+      const result = await res.json();
+      
       toast({
         title: "Success",
-        description: "Birth certificate application submitted successfully!",
+        description: "Birth certificate application submitted and PDF generated successfully!",
       });
+
+      // Open the generated PDF in a new tab
+      if (result.pdfId) {
+        const pdfUrl = `http://localhost:3001/pdf/${result.pdfId}`;
+        window.open(pdfUrl, '_blank');
+      }
     } catch (error) {
       console.error('Error submitting form:', error);
       toast({
@@ -99,63 +103,6 @@ export const BirthCertificateForm = () => {
       setIsSubmitting(false);
     }
   };
-
-  const handleShowPreview = () => {
-    setStep('preview');
-  };
-
-  const handleDownloadCertificate = () => {
-    if (!certificateId) return;
-    window.open(`http://localhost:8080/api/v1/birth-certificates/${certificateId}/certificate`, '_blank');
-  };
-
-  if (step === 'preview') {
-    return (
-      <Card className="w-full max-w-4xl mx-auto">
-        <CardHeader>
-          <CardTitle>Birth Certificate Preview</CardTitle>
-          <CardDescription>Review your birth certificate details</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="border rounded-lg p-6 bg-muted/50">
-            <h3 className="text-lg font-semibold mb-4 text-center">BIRTH CERTIFICATE</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div><strong>Name:</strong> {form.getValues('firstName')} {form.getValues('middleName')} {form.getValues('lastName')}</div>
-              <div><strong>Date of Birth:</strong> {form.getValues('dateOfBirth')}</div>
-              <div><strong>Gender:</strong> {form.getValues('gender')}</div>
-              <div><strong>Time of Birth:</strong> {form.getValues('timeOfBirth') || 'Not specified'}</div>
-              <div><strong>Place of Birth:</strong> {form.getValues('placeOfBirth')}</div>
-              <div><strong>Father's Name:</strong> {form.getValues('fatherName')}</div>
-              <div><strong>Mother's Name:</strong> {form.getValues('motherName')}</div>
-              <div><strong>Registration Number:</strong> {form.getValues('registrationNumber') || 'To be assigned'}</div>
-            </div>
-          </div>
-          <Button onClick={handleDownloadCertificate} className="w-full" size="lg">
-            Download Certificate
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (step === 'submitted') {
-    return (
-      <Card className="w-full max-w-2xl mx-auto">
-        <CardHeader>
-          <CardTitle>Application Submitted</CardTitle>
-          <CardDescription>Your birth certificate application has been submitted successfully</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center space-y-4">
-            <p>Application ID: {certificateId}</p>
-            <Button onClick={handleShowPreview} size="lg">
-              Show Preview
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
 
   const formValues = form.watch();
   const isFormComplete = formValues.firstName && formValues.lastName && formValues.dateOfBirth && 
