@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -8,14 +8,19 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { BirthCertificateForm as BirthCertificateFormType } from "@/types/birth-certificate";
 import { AadhaarConsentDialog } from "./AadhaarConsentDialog";
+import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Info, ShieldCheck } from "lucide-react";
 
 export const BirthCertificateForm = () => {
 
   const [showConsentDialog, setShowConsentDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lastGeneratedPdf, setLastGeneratedPdf] = useState<{ id: number; fileName?: string } | null>(null);
   const { toast } = useToast();
 
   const form = useForm<BirthCertificateFormType>({
+    mode: 'onChange',
     defaultValues: {
       firstName: "",
       middleName: "",
@@ -87,10 +92,9 @@ export const BirthCertificateForm = () => {
         description: "Birth certificate application submitted and PDF generated successfully!",
       });
 
-      // Open the generated PDF in a new tab
+      // Store the generated PDF details for UI access (view/download)
       if (result.pdfId) {
-        const pdfUrl = `http://localhost:3001/pdf/${result.pdfId}`;
-        window.open(pdfUrl, '_blank');
+        setLastGeneratedPdf({ id: result.pdfId, fileName: result.pdfFileName });
       }
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -105,20 +109,37 @@ export const BirthCertificateForm = () => {
   };
 
   const formValues = form.watch();
-  const isFormComplete = formValues.firstName && formValues.lastName && formValues.dateOfBirth && 
-                        formValues.placeOfBirth && formValues.fatherName && formValues.fatherAadhaarNumber && 
-                        formValues.motherName && formValues.motherAadhaarNumber;
+  const isValid = form.formState.isValid;
+  const successRef = useRef<HTMLDivElement | null>(null);
+  const [successVisible, setSuccessVisible] = useState(false);
+  useEffect(() => {
+    if (lastGeneratedPdf && successRef.current) {
+      successRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      requestAnimationFrame(() => setSuccessVisible(true));
+    } else {
+      setSuccessVisible(false);
+    }
+  }, [lastGeneratedPdf]);
 
   return (
     <>
-      <Card className="w-full max-w-4xl mx-auto">
+      <Card className="w-full mx-auto shadow-sm">
         <CardHeader>
-          <CardTitle>Birth Certificate Application</CardTitle>
-          <CardDescription>Fill in the required information to generate a birth certificate</CardDescription>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-blue-600" />
+                Birth Certificate Application
+              </CardTitle>
+              <CardDescription>Provide accurate details to generate an official-looking certificate</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               {/* Personal Information */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Personal Information</h3>
@@ -130,8 +151,9 @@ export const BirthCertificateForm = () => {
                       <FormItem>
                         <FormLabel>First Name *</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input placeholder="e.g., Aarav" {...field} />
                         </FormControl>
+                        <p className="text-xs text-muted-foreground">As on official records</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -143,8 +165,9 @@ export const BirthCertificateForm = () => {
                       <FormItem>
                         <FormLabel>Middle Name</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input placeholder="Optional" {...field} />
                         </FormControl>
+                        <p className="text-xs text-muted-foreground">Leave blank if not applicable</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -156,8 +179,9 @@ export const BirthCertificateForm = () => {
                       <FormItem>
                         <FormLabel>Last Name *</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input placeholder="e.g., Sharma" {...field} />
                         </FormControl>
+                        <p className="text-xs text-muted-foreground">Surname</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -173,6 +197,7 @@ export const BirthCertificateForm = () => {
                         <FormControl>
                           <Input type="date" {...field} />
                         </FormControl>
+                        <p className="text-xs text-muted-foreground">Format: YYYY-MM-DD</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -186,7 +211,7 @@ export const BirthCertificateForm = () => {
                         <Select onValueChange={field.onChange} defaultValue={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue />
+                              <SelectValue placeholder="Select gender" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -195,6 +220,7 @@ export const BirthCertificateForm = () => {
                             <SelectItem value="other">Other</SelectItem>
                           </SelectContent>
                         </Select>
+                        <p className="text-xs text-muted-foreground">Select as per birth record</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -208,6 +234,7 @@ export const BirthCertificateForm = () => {
                         <FormControl>
                           <Input type="time" {...field} />
                         </FormControl>
+                        <p className="text-xs text-muted-foreground">24-hour format</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -220,13 +247,16 @@ export const BirthCertificateForm = () => {
                     <FormItem>
                       <FormLabel>Place of Birth *</FormLabel>
                       <FormControl>
-                        <Input {...field} />
+                        <Input placeholder="City, State" {...field} />
                       </FormControl>
+                      <p className="text-xs text-muted-foreground">Include district/state if relevant</p>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
+
+              <Separator />
 
               {/* Father's Information */}
               <div className="space-y-4">
@@ -239,7 +269,7 @@ export const BirthCertificateForm = () => {
                       <FormItem>
                         <FormLabel>Father's Name *</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input placeholder="Full name" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -252,8 +282,12 @@ export const BirthCertificateForm = () => {
                       <FormItem>
                         <FormLabel>Father's AADHAAR Number *</FormLabel>
                         <FormControl>
-                          <Input {...field} maxLength={12} />
+                          <Input placeholder="12-digit number" {...field} maxLength={12} onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, "");
+                            form.setValue("fatherAadhaarNumber", value);
+                          }} />
                         </FormControl>
+                        <p className="text-xs text-muted-foreground">Digits only, no spaces or dashes</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -273,11 +307,14 @@ export const BirthCertificateForm = () => {
                           {...field}
                         />
                       </FormControl>
+                      <p className="text-xs text-muted-foreground">Accepted: PDF/JPG/PNG</p>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
+
+              <Separator />
 
               {/* Mother's Information */}
               <div className="space-y-4">
@@ -290,7 +327,7 @@ export const BirthCertificateForm = () => {
                       <FormItem>
                         <FormLabel>Mother's Name *</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input placeholder="Full name" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -303,8 +340,12 @@ export const BirthCertificateForm = () => {
                       <FormItem>
                         <FormLabel>Mother's AADHAAR Number *</FormLabel>
                         <FormControl>
-                          <Input {...field} maxLength={12} />
+                          <Input placeholder="12-digit number" {...field} maxLength={12} onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, "");
+                            form.setValue("motherAadhaarNumber", value);
+                          }} />
                         </FormControl>
+                        <p className="text-xs text-muted-foreground">Digits only, no spaces or dashes</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -324,11 +365,14 @@ export const BirthCertificateForm = () => {
                           {...field}
                         />
                       </FormControl>
+                      <p className="text-xs text-muted-foreground">Accepted: PDF/JPG/PNG</p>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
+
+              <Separator />
 
               {/* Official Information */}
               <div className="space-y-4">
@@ -341,8 +385,9 @@ export const BirthCertificateForm = () => {
                       <FormItem>
                         <FormLabel>Issuing Authority</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input placeholder="Municipal authority / Registrar" {...field} />
                         </FormControl>
+                        <p className="text-xs text-muted-foreground">If known</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -354,8 +399,9 @@ export const BirthCertificateForm = () => {
                       <FormItem>
                         <FormLabel>Registration Number</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input placeholder="If available" {...field} />
                         </FormControl>
+                        <p className="text-xs text-muted-foreground">Optional</p>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -363,15 +409,109 @@ export const BirthCertificateForm = () => {
                 </div>
               </div>
 
-              {isFormComplete && (
-                <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
-                  {isSubmitting ? "Submitting..." : "Submit Application"}
-                </Button>
-              )}
+              <Button type="submit" size="lg" className="w-full" disabled={!isValid || isSubmitting}>
+                {isSubmitting ? "Submitting..." : "Submit Application"}
+              </Button>
             </form>
           </Form>
+        </div>
+        <div className="lg:col-span-1">
+          <Card className="sticky top-6">
+            <CardHeader>
+              <CardTitle className="text-base">Application Summary</CardTitle>
+              <CardDescription>Review before submitting</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <div className="text-muted-foreground">Applicant</div>
+                  <div className="font-medium">
+                    {formValues.firstName || "—"} {formValues.middleName || ""} {formValues.lastName || "—"}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <div className="text-muted-foreground">DOB</div>
+                    <div className="font-medium">{formValues.dateOfBirth || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Gender</div>
+                    <div className="font-medium capitalize">{formValues.gender || "—"}</div>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Place of Birth</div>
+                  <div className="font-medium">{formValues.placeOfBirth || "—"}</div>
+                </div>
+                <Separator />
+                <div className="grid grid-cols-1 gap-2">
+                  <div>
+                    <div className="text-muted-foreground">Father</div>
+                    <div className="font-medium">{formValues.fatherName || "—"}</div>
+                    <div className="text-xs text-muted-foreground tracking-widest">{formValues.fatherAadhaarNumber || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Mother</div>
+                    <div className="font-medium">{formValues.motherName || "—"}</div>
+                    <div className="text-xs text-muted-foreground tracking-widest">{formValues.motherAadhaarNumber || "—"}</div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
         </CardContent>
       </Card>
+
+      {lastGeneratedPdf && (
+        <Card ref={successRef} className={`w-full max-w-4xl mx-auto mt-6 transition-opacity duration-500 ${successVisible ? 'opacity-100' : 'opacity-0'}`}>
+          <CardHeader>
+            <CardTitle>Your Generated Certificate</CardTitle>
+            <CardDescription>Only you can access this certificate from here.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <div className="font-medium">{lastGeneratedPdf.fileName || `Certificate #${lastGeneratedPdf.id}`}</div>
+                <div className="text-xs text-gray-500 mt-1">Success! Keep this window to view or download your certificate.</div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(`http://localhost:3001/pdf/${lastGeneratedPdf.id}`, '_blank')}
+                >
+                  View
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const response = await fetch(`http://localhost:3001/pdf/${lastGeneratedPdf.id}`);
+                      if (!response.ok) throw new Error('Failed to download PDF');
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = lastGeneratedPdf.fileName || `certificate_${lastGeneratedPdf.id}.pdf`;
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                      document.body.removeChild(a);
+                    } catch (err) {
+                      console.error('Error downloading PDF:', err);
+                    }
+                  }}
+                >
+                  Download
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <AadhaarConsentDialog
         open={showConsentDialog}

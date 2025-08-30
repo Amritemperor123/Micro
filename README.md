@@ -7,14 +7,38 @@ A complete end-to-end microservice that handles birth certificate applications, 
 1. **Backend**: `http://localhost:3001`
 2. **Frontend**: `http://localhost:8080`
 
+### Run with Docker (recommended)
+
+From the project root:
+
+```bash
+docker compose up --build -d
+```
+
+Services:
+- Backend: `birth-backend` on port `3001`
+- Frontend: `birth-frontend` on port `8080`
+
+To stop:
+
+```bash
+docker compose down
+```
+
+If you previously used an older compose with `api`/`db` services, clean up orphans:
+
+```bash
+docker compose down --remove-orphans
+```
+
 ## Features
 
 - **Form Submission**: Complete birth certificate application form with validation
 - **Local Data Storage**: SQLite database for form submissions and PDF metadata
 - **PDF Generation**: Automatic PDF generation with professional formatting
-- **PDF Management**: View, download, and manage all generated certificates
+- **PDF Management**: View and download the certificate generated for the current submission
 - **Modern UI**: React-based frontend with shadcn/ui components
-- **Real-time Updates**: Automatic PDF opening after form submission
+- **Real-time Updates**: Success card with direct view/download after form submission
 
 ## Architecture
 
@@ -27,12 +51,49 @@ A complete end-to-end microservice that handles birth certificate applications, 
 - **File Storage**: Local `certificates/` folder for PDF storage
 
 ### Frontend (React + TypeScript + Vite)
+### Diagrams
+
+Architecture (flow):
+
+```mermaid
+flowchart LR
+  user["User"] -->|"fills form"| fe["Frontend (React/Vite)"]
+  fe -->|"POST /submit-form"| be["Backend (Express/TS)"]
+  be -->|"write JSON"| db1["SQLite: form_submissions.db"]
+  be -->|"generate PDF"| pdf["PDFKit"]
+  pdf -->|"save file"| fs["certificates/ (bind mount)"]
+  be -->|"insert metadata"| db2["SQLite: pdf_metadata.db"]
+  be -->|"return pdfId, fileName"| fe
+  fe -->|"view/download"| be
+```
+
+Sequence:
+
+```mermaid
+sequenceDiagram
+  participant U as "User"
+  participant FE as "Frontend (React/Vite)"
+  participant BE as "Backend (Express/TS)"
+  participant DB1 as "SQLite form_submissions.db"
+  participant DB2 as "SQLite pdf_metadata.db"
+  participant FS as "certificates/ (bind mount)"
+  participant PDF as "PDFKit"
+
+  U->>FE: Fill + submit form
+  FE->>BE: POST /submit-form (formData)
+  BE->>DB1: Insert submission JSON
+  BE->>PDF: Generate certificate PDF
+  PDF->>FS: Save PDF file
+  BE->>DB2: Insert PDF metadata
+  BE-->>FE: Respond { pdfId, submissionId, pdfFileName }
+  FE->>BE: GET /pdf/:id (view/download)
+  BE-->>U: PDF stream
+```
 - **Framework**: React 18 with TypeScript
 - **UI Components**: shadcn/ui component library
 - **Styling**: Tailwind CSS
-- **Form Handling**: React Hook Form with Zod validation
-- **State Management**: React hooks for local state
-- **Server**: Vite dev server on port 8080
+- **Form Handling**: React Hook Form
+- **Server**: Vite dev server on port 8080 (for local dev)
 
 ## Getting Started
 
@@ -40,7 +101,7 @@ A complete end-to-end microservice that handles birth certificate applications, 
 - Node.js 18+ 
 - npm or yarn
 
-### Installation
+### Installation (without Docker)
 
 1. **Clone the repository**
    ```bash
@@ -60,7 +121,7 @@ A complete end-to-end microservice that handles birth certificate applications, 
    npm install
    ```
 
-### Running the Application
+### Running the Application (without Docker)
 
 1. **Start the backend server**
    ```bash
@@ -81,25 +142,10 @@ A complete end-to-end microservice that handles birth certificate applications, 
 
 ## Usage
 
-### Submitting a Birth Certificate Application
-
-1. Navigate to the "Submit Application" tab
-2. Fill out the complete birth certificate form including:
-   - Personal information (name, date of birth, gender, etc.)
-   - Father's information (name, Aadhaar number)
-   - Mother's information (name, Aadhaar number)
-   - Official information (issuing authority, registration number)
-3. Provide Aadhaar consent when prompted
-4. Submit the form
-5. The PDF will be automatically generated and opened in a new tab
-
-### Managing Generated PDFs
-
-1. Navigate to the "View Certificates" tab
-2. View all generated birth certificates with submission details
-3. Use the "View" button to open PDFs in a new tab
-4. Use the "Download" button to save PDFs locally
-5. Refresh the list to see new certificates
+1. Fill out the application form
+2. Provide Aadhaar consent when prompted
+3. Submit the form
+4. The generated certificate will appear in a success card with View and Download buttons
 
 ## API Endpoints
 
@@ -107,7 +153,7 @@ A complete end-to-end microservice that handles birth certificate applications, 
 
 - `POST /submit-form` - Submit birth certificate application
 - `GET /pdf/:id` - View/download a specific PDF
-- `GET /pdfs` - List all generated PDFs
+- `GET /pdfs` - List all generated PDFs (used for internal management; not exposed in UI)
 - `GET /submission/:id` - Get submission data by ID
 
 ### Request/Response Examples
@@ -139,6 +185,17 @@ POST /submit-form
   "pdfFileName": "birth_certificate_1_1234567890.pdf"
 }
 ```
+
+## Docker Details
+
+- Compose file runs two services:
+  - `backend` (Node + Express, port 3001)
+  - `frontend` (Nginx serving Vite build, port 8080)
+- Bind mounts:
+  - `backend/certificates` → persists generated PDFs
+  - `backend/form_submissions.db` and `backend/pdf_metadata.db` → persist SQLite databases
+
+Environment variables are not required for local Docker usage; frontend calls `http://localhost:3001` by default.
 
 ## Database Schema
 
@@ -185,20 +242,9 @@ CREATE TABLE pdfs (
 └── README.md
 ```
 
-## PDF Features
-
-The generated PDFs include:
-- Professional header with "BIRTH CERTIFICATE" title
-- Government of India branding
-- Unique certificate number
-- Organized sections for personal, father's, and mother's information
-- Official information section (if provided)
-- Generation timestamp and certificate ID
-- Professional formatting with proper fonts and spacing
-
 ## Development
 
-### Building for Production
+### Building for Production (without Docker)
 
 **Backend:**
 ```bash
@@ -216,38 +262,17 @@ npm run preview
 
 ### Environment Variables
 
-The application currently uses default localhost URLs. For production, update the frontend API calls to use environment variables:
+For production deployments, you may want to configure the frontend to read an API base URL:
 
 ```typescript
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 ```
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **PDF not opening**: Ensure the backend server is running and the certificates folder exists
-2. **Database errors**: Check that the backend has write permissions to create SQLite databases
-3. **CORS issues**: The backend includes CORS middleware, but ensure your frontend URL is allowed
-4. **Port conflicts**: 
-   - Backend: Change port in `backend/src/index.ts` if 3001 is occupied
-   - Frontend: Change port in `frontend/vite.config.ts` if 8080 is occupied
-
-### Logs
-
-Check the backend console for:
-- Server startup messages
-- Database connection status
-- PDF generation logs
-- Error messages
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+- **Ports in use**: Change backend port in `backend/src/index.ts` or frontend dev port in `frontend/vite.config.ts`.
+- **PDF not opening**: Ensure `backend` is running and the `certificates` folder is mounted.
+- **Database errors**: Ensure the backend container has write permissions for the mounted `.db` files.
 
 ## License
 

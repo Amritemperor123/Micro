@@ -1,31 +1,24 @@
 services:
-  db:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: birth
-      POSTGRES_USER: birth
-      POSTGRES_PASSWORD: birth
-    ports:
-      - "5432:5432"
-    volumes:
-      - db_data:/var/lib/postgresql/data
-
-  api:
+  backend:
     build:
       context: ./backend
-    depends_on:
-      - db
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/birth
-      SPRING_DATASOURCE_USERNAME: birth
-      SPRING_DATASOURCE_PASSWORD: birth
+    container_name: birth-backend
     ports:
-      - "8080:8080"
+      - "3001:3001"
     volumes:
-      - aadhaar_storage:/app/storage
+      - ./backend/certificates:/app/certificates
+      - ./backend/form_submissions.db:/app/form_submissions.db
+      - ./backend/pdf_metadata.db:/app/pdf_metadata.db
+    restart: unless-stopped
 
-volumes:
-  db_data:
-  aadhaar_storage:
+  frontend:
+    build:
+      context: ./frontend
+    container_name: birth-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
 
-
+volumes: {}

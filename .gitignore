@@ -1,1 +1,8 @@
+# Root ignores
+node_modules/
+.git/
 .vscode/
+
+# Package files (as requested)
+package.json
+package-lock.json

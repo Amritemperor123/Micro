@@ -1,4 +1,4 @@
-# Frontend ignores
+# Backend ignores
 node_modules/
 .git/
 .vscode/
@@ -6,4 +6,3 @@ node_modules/
 # Package files (as requested)
 package.json
 package-lock.json
-bun.lockb
