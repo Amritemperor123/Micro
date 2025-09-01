@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import db from './database';
 import pdfDb from './pdfDatabase';
+import { verifyAdmin } from './adminDatabase';
 import fs from 'fs-extra';
 import path from 'path';
 import { generatePdf } from './pdfGenerator';
@@ -13,8 +14,13 @@ const port = 3001;
 app.use(cors());
 app.use(express.json());
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
 // Create certificates directory if it doesn't exist
-const pdfsDir = path.join(__dirname, '..', 'certificates');
+const pdfsDir = path.join(__dirname, '..', '..', 'database', 'certificates');
 fs.ensureDirSync(pdfsDir);
 
 app.post('/submit-form', async (req, res) => {
@@ -84,21 +90,38 @@ app.get('/pdf/:id', (req, res) => {
 // Endpoint to get all PDFs
 app.get('/pdfs', (req, res) => {
   try {
-    const stmt = pdfDb.prepare(`
-      SELECT p.id, p.submissionId, p.fileName, p.filePath, s.data, p.createdAt
-      FROM pdfs p
-      LEFT JOIN submissions s ON p.submissionId = s.id
-      ORDER BY p.createdAt DESC
+    // Get all PDFs from pdf_metadata.db
+    const pdfStmt = pdfDb.prepare(`
+      SELECT id, submissionId, fileName, filePath, createdAt
+      FROM pdfs
+      ORDER BY createdAt DESC
     `);
-    const results = stmt.all();
+    const pdfResults = pdfStmt.all();
     
-    const pdfs = results.map((row: any) => ({
-      id: row.id,
-      submissionId: row.submissionId,
-      fileName: row.fileName,
-      submissionData: row.data ? JSON.parse(row.data) : null,
-      createdAt: row.createdAt
-    }));
+    // Get submission data for each PDF
+    const pdfs = pdfResults.map((pdf: any) => {
+      let submissionData = null;
+      
+      try {
+        // Get submission data from form_submissions.db
+        const submissionStmt = db.prepare('SELECT data FROM submissions WHERE id = ?');
+        const submissionResult = submissionStmt.get(pdf.submissionId) as { data: string } | undefined;
+        
+        if (submissionResult && submissionResult.data) {
+          submissionData = JSON.parse(submissionResult.data);
+        }
+      } catch (submissionError) {
+        console.error(`Error fetching submission ${pdf.submissionId}:`, submissionError);
+      }
+      
+      return {
+        id: pdf.id,
+        submissionId: pdf.submissionId,
+        fileName: pdf.fileName,
+        submissionData: submissionData,
+        createdAt: pdf.createdAt
+      };
+    });
     
     res.json(pdfs);
   } catch (error) {
@@ -122,6 +145,56 @@ app.get('/submission/:id', (req, res) => {
   } catch (error) {
     console.error('Error fetching submission:', error);
     res.status(500).json({ message: 'Error fetching submission.' });
+  }
+});
+
+// Admin authentication endpoint
+app.post('/admin/login', (req, res) => {
+  const { username, password } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({ 
+      message: 'Username and password are required' 
+    });
+  }
+
+  const isValid = verifyAdmin(username, password);
+  
+  if (isValid) {
+    res.status(200).json({ 
+      message: 'Login successful',
+      authenticated: true
+    });
+  } else {
+    res.status(401).json({ 
+      message: 'Invalid credentials',
+      authenticated: false
+    });
+  }
+});
+
+// Protected endpoint to verify admin access
+app.post('/admin/verify', (req, res) => {
+  const { username, password } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({ 
+      message: 'Username and password are required' 
+    });
+  }
+
+  const isValid = verifyAdmin(username, password);
+  
+  if (isValid) {
+    res.status(200).json({ 
+      message: 'Access granted',
+      authenticated: true
+    });
+  } else {
+    res.status(401).json({ 
+      message: 'Access denied',
+      authenticated: false
+    });
   }
 });
 

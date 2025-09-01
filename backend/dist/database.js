@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 const path_1 = __importDefault(require("path"));
-const dbPath = path_1.default.join(__dirname, '..', 'form_submissions.db');
+const dbPath = path_1.default.join(__dirname, '..', '..', 'database', 'form_submissions.db');
 const db = new better_sqlite3_1.default(dbPath);
 db.exec(`
   CREATE TABLE IF NOT EXISTS submissions (

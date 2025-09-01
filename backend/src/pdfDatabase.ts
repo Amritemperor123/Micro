@@ -1,8 +1,13 @@
 
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs-extra';
 
-const pdfDbPath = path.join(__dirname, '..', 'pdf_metadata.db');
+const pdfDbPath = path.join(__dirname, '..', '..', 'database', 'pdf_metadata.db');
+
+// Ensure the directory exists
+fs.ensureDirSync(path.dirname(pdfDbPath));
+
 const pdfDb = new Database(pdfDbPath);
 
 pdfDb.exec(`

@@ -16,6 +16,7 @@ const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const database_1 = __importDefault(require("./database"));
 const pdfDatabase_1 = __importDefault(require("./pdfDatabase"));
+const adminDatabase_1 = require("./adminDatabase");
 const fs_extra_1 = __importDefault(require("fs-extra"));
 const path_1 = __importDefault(require("path"));
 const pdfGenerator_1 = require("./pdfGenerator");
@@ -23,8 +24,12 @@ const app = (0, express_1.default)();
 const port = 3001;
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
 // Create certificates directory if it doesn't exist
-const pdfsDir = path_1.default.join(__dirname, '..', 'certificates');
+const pdfsDir = path_1.default.join(__dirname, '..', '..', 'database', 'certificates');
 fs_extra_1.default.ensureDirSync(pdfsDir);
 app.post('/submit-form', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { formData } = req.body;
@@ -89,20 +94,35 @@ app.get('/pdf/:id', (req, res) => {
 // Endpoint to get all PDFs
 app.get('/pdfs', (req, res) => {
     try {
-        const stmt = pdfDatabase_1.default.prepare(`
-      SELECT p.id, p.submissionId, p.fileName, p.filePath, s.data, p.createdAt
-      FROM pdfs p
-      LEFT JOIN submissions s ON p.submissionId = s.id
-      ORDER BY p.createdAt DESC
+        // Get all PDFs from pdf_metadata.db
+        const pdfStmt = pdfDatabase_1.default.prepare(`
+      SELECT id, submissionId, fileName, filePath, createdAt
+      FROM pdfs
+      ORDER BY createdAt DESC
     `);
-        const results = stmt.all();
-        const pdfs = results.map((row) => ({
-            id: row.id,
-            submissionId: row.submissionId,
-            fileName: row.fileName,
-            submissionData: row.data ? JSON.parse(row.data) : null,
-            createdAt: row.createdAt
-        }));
+        const pdfResults = pdfStmt.all();
+        // Get submission data for each PDF
+        const pdfs = pdfResults.map((pdf) => {
+            let submissionData = null;
+            try {
+                // Get submission data from form_submissions.db
+                const submissionStmt = database_1.default.prepare('SELECT data FROM submissions WHERE id = ?');
+                const submissionResult = submissionStmt.get(pdf.submissionId);
+                if (submissionResult && submissionResult.data) {
+                    submissionData = JSON.parse(submissionResult.data);
+                }
+            }
+            catch (submissionError) {
+                console.error(`Error fetching submission ${pdf.submissionId}:`, submissionError);
+            }
+            return {
+                id: pdf.id,
+                submissionId: pdf.submissionId,
+                fileName: pdf.fileName,
+                submissionData: submissionData,
+                createdAt: pdf.createdAt
+            };
+        });
         res.json(pdfs);
     }
     catch (error) {
@@ -126,6 +146,50 @@ app.get('/submission/:id', (req, res) => {
     catch (error) {
         console.error('Error fetching submission:', error);
         res.status(500).json({ message: 'Error fetching submission.' });
+    }
+});
+// Admin authentication endpoint
+app.post('/admin/login', (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+        return res.status(400).json({
+            message: 'Username and password are required'
+        });
+    }
+    const isValid = (0, adminDatabase_1.verifyAdmin)(username, password);
+    if (isValid) {
+        res.status(200).json({
+            message: 'Login successful',
+            authenticated: true
+        });
+    }
+    else {
+        res.status(401).json({
+            message: 'Invalid credentials',
+            authenticated: false
+        });
+    }
+});
+// Protected endpoint to verify admin access
+app.post('/admin/verify', (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+        return res.status(400).json({
+            message: 'Username and password are required'
+        });
+    }
+    const isValid = (0, adminDatabase_1.verifyAdmin)(username, password);
+    if (isValid) {
+        res.status(200).json({
+            message: 'Access granted',
+            authenticated: true
+        });
+    }
+    else {
+        res.status(401).json({
+            message: 'Access denied',
+            authenticated: false
+        });
     }
 });
 app.listen(port, () => {
